@@ -1,0 +1,52 @@
+[
+  {
+    "id": "dairy_core",
+    "category": "Dairy",
+    "display_name": "Milk Derivative",
+    "status": "RED",
+    "strictness": "CORE",
+    "description": "Derived from animal milk.",
+    "keywords": [
+      "milk",
+      "whey",
+      "casein",
+      "lactose",
+      "butter",
+      "cream"
+    ],
+    "exceptions": [
+      "almond milk",
+      "soy milk",
+      "oat milk",
+      "coconut milk",
+      "cocoa butter",
+      "peanut butter",
+      "shea butter"
+    ]
+  },
+  {
+    "id": "insect_dyes",
+    "category": "Insect Derivative",
+    "display_name": "Carmine (Beetle Dye)",
+    "status": "RED",
+    "strictness": "CORE",
+    "description": "Red pigment derived from crushed cochineal beetles.",
+    "keywords": [
+      "carmine",
+      "cochineal",
+      "e120"
+    ]
+  },
+  {
+    "id": "honey_core",
+    "category": "Animal Product",
+    "display_name": "Honey",
+    "status": "YELLOW",
+    "strictness": "CORE",
+    "description": "Produced by bees.",
+    "keywords": [
+      "honey",
+      "beeswax"
+    ]
+  }
+]
