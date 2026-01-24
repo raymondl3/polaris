@@ -1,0 +1,66 @@
+services:
+  # -----------------------------
+  # Backend: Node.js (Express/Fastify/NestJS)
+  # -----------------------------
+  backend:
+    build: 
+      context: ./server
+      dockerfile: Dockerfile.backend # Naming this clearly to separate from frontend
+    # Use nodemon for hot-reloading so you don't have to restart containers on code changes
+    command: npm run dev 
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    ports:
+      - "8000:8000" # Common convention: API on 8000, Frontend on 3000
+    depends_on:
+      - db
+      - redis
+    environment:
+      - PORT=8000
+      - DATABASE_URL=postgres://postgres:password@db:5432/polaris_development
+      - REDIS_URL=redis://redis:6379
+    labels:
+      - "dev.orbstack.domains=api.polaris.orb.local"
+
+  # -----------------------------
+  # Database: Postgres
+  # -----------------------------
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: polaris_development
+
+  # -----------------------------
+  # Cache: Redis
+  # -----------------------------
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+
+  # -----------------------------
+  # Frontend: Next.js / React
+  # # -----------------------------
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.frontend
+  #   command: npm run dev
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://api.polaris.orb.local
+  #   labels:
+  #     - "dev.orbstack.domains=app.polaris.orb.local"
+
+volumes:
+  postgres_data:
+  redis_data:

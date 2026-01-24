@@ -5,7 +5,7 @@ const vision = require('@google-cloud/vision');
 const { checkIngredient, parseOCRText } = require('./ingredients');
 
 const app = express();
-const port = 3000;
+const port = 8000;
 
 // --- 1. GOOGLE CLOUD SETUP ---
 // We do NOT pass a keyFilename anymore. 
@@ -33,6 +33,9 @@ app.post('/api/scan-image', async (req, res) => {
     const [result] = await client.documentTextDetection({
       image: { content: image }
     });
+    console.log("--- RAW GOOGLE VISION JSON ---");
+    console.log(JSON.stringify(result, null, 2)); 
+    console.log("-----------------------------------");
 
     const detections = result.textAnnotations;
 
@@ -47,7 +50,6 @@ app.post('/api/scan-image', async (req, res) => {
     // B. Parse the Results
     // detections[0] is the full text block found in the image
     const fullText = detections[0].description;
-    
     // Clean the text using our helper function
     const ingredientList = parseOCRText(fullText);
 
@@ -66,6 +68,20 @@ app.post('/api/scan-image', async (req, res) => {
     console.error('SERVER ERROR:', error);
     res.status(500).json({ error: 'Failed to process image' });
   }
+});
+
+// 1. The Root Route (Homepage)
+app.get('/', (req, res) => {
+  res.send('Welcome to Project Polaris API 🚀');
+});
+
+// 2. The Health Check Route
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date(),
+    service: 'backend'
+  });
 });
 
 // --- 4. START SERVER ---

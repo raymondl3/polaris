@@ -1,0 +1,23 @@
+# 1. THE INGREDIENTS
+# Use Node.js version 20 (The official image)
+FROM node:20
+
+# Create a folder inside the container to hold your app
+WORKDIR /app
+
+# 2. THE PREP WORK
+# Copy package.json first so we can install libraries
+COPY /package*.json ./
+
+# Install the libraries (node_modules)
+RUN npm install
+
+# Copy the rest of your project code into the container
+COPY . .
+
+# 3. THE SERVING INSTRUCTIONS
+# Open port 8000 so the outside world can talk to it
+EXPOSE 8000
+
+# Start the app using nodemon (for hot reloading)
+CMD ["npm", "run", "dev"]
