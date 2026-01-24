@@ -2,89 +2,74 @@
 const express = require('express');
 const cors = require('cors');
 const vision = require('@google-cloud/vision');
-const { checkIngredient, parseOCRText } = require('./ingredients');
+
+// FIX #3: Import the whole object so we can use 'ingredients.parseOCRText' or similar
+const ingredients = require('./ingredients'); 
 
 const app = express();
-const port = 8000;
 
-// --- 1. GOOGLE CLOUD SETUP ---
-// We do NOT pass a keyFilename anymore. 
-// It automatically finds the credentials you set up via terminal ('gcloud auth ...')
+// FIX #1: Must match the internal Docker port (3000)
+// Your Docker command maps 8000->3000. So we must listen on 3000 inside.
+const port = process.env.PORT || 3000; 
+
 const client = new vision.ImageAnnotatorClient();
 
-// --- 2. MIDDLEWARE ---
+// MIDDLEWARE
 app.use(cors());
+// This looks correct (Limit is BEFORE routes) ✅
+app.use(express.json({ limit: '10mb' })); 
 
-// INCREASE PAYLOAD LIMIT: Crucial for sending images as Base64 strings.
-// the server will crash on large photos.
-app.use(express.json({ limit: '10mb' }));
-
-// --- 3. THE ROUTE ---
+// THE ROUTE
 app.post('/api/scan-image', async (req, res) => {
+  console.log("📍 Checkpoint 1: Request received!");
+  
   try {
-    // Expecting: { "image": "BASE64_STRING_HERE" }
     const { image } = req.body;
 
     if (!image) {
+      console.log("❌ Error: No image provided");
       return res.status(400).json({ error: 'No image provided' });
     }
+    console.log(`📍 Checkpoint 2: Image received (Length: ${image.length})`);
 
-    // A. Send to Google Cloud Vision
+    const base64Clean = image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Clean, 'base64');
+
+    console.log("📍 Checkpoint 3: Calling Google Vision...");
+
+    // FIX #2: Wrap the buffer in an object to prevent ENAMETOOLONG crash
     const [result] = await client.documentTextDetection({
-      image: { content: image }
+      image: {
+        content: buffer
+      }
     });
-    console.log("--- RAW GOOGLE VISION JSON ---");
-    console.log(JSON.stringify(result, null, 2)); 
-    console.log("-----------------------------------");
+    
+    console.log("📍 Checkpoint 4: Google Vision responded!");
 
-    const detections = result.textAnnotations;
-
-    if (!detections || detections.length === 0) {
-      return res.json({ 
-        rawText: "", 
-        results: [], 
-        message: 'No text found in image.' 
+    if (!result.fullTextAnnotation) {
+      return res.json({
+        safe: true,
+        matches: [],
+        debug_text: "No text detected.",
+        warning: "Image might be too blurry."
       });
     }
 
-    // B. Parse the Results
-    // detections[0] is the full text block found in the image
-    const fullText = detections[0].description;
-    // Clean the text using our helper function
-    const ingredientList = parseOCRText(fullText);
+    // FIX #3 usage: Ensure this function name matches what is in ingredients.js
+    // I am assuming your function is named 'parseOCRText' based on your imports
+    // If your ingredients.js exports 'analyzeImageText', use that instead.
+    const analysis = ingredients.parseOCRText(result);
 
-    // C. Analyze Ingredients
-    // Map over every ingredient and check it against our Blocklist
-    const analysis = ingredientList.map(item => checkIngredient(item));
-
-    // D. Return the Data
-    res.json({
-      rawText: fullText,                // Debugging: What Google saw
-      parsedIngredients: ingredientList,// Debugging: How we split it
-      results: analysis                 // The actual Red/Green flags
-    });
+    console.log("📍 Checkpoint 5: Analysis complete. Sending response.");
+    res.json(analysis);
 
   } catch (error) {
-    console.error('SERVER ERROR:', error);
+    console.error('💥 SERVER ERROR:', error);
     res.status(500).json({ error: 'Failed to process image' });
   }
 });
 
-// 1. The Root Route (Homepage)
-app.get('/', (req, res) => {
-  res.send('Welcome to Project Polaris API 🚀');
-});
-
-// 2. The Health Check Route
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date(),
-    service: 'backend'
-  });
-});
-
-// --- 4. START SERVER ---
-app.listen(port, () => {
-  console.log(`Polaris server running on http://localhost:${port}`);
+// START SERVER
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Polaris Backend running on http://0.0.0.0:${port}`);
 });
