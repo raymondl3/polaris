@@ -11,6 +11,8 @@ services:
     volumes:
       - ./server:/app
       - /app/node_modules
+      # Map the host's gcloud config to the container's root home
+      - ~/.config/gcloud:/root/.config/gcloud
     ports:
       - "8000:8000" # Common convention: API on 8000, Frontend on 3000
     depends_on:
@@ -20,6 +22,8 @@ services:
       - PORT=8000
       - DATABASE_URL=postgres://postgres:password@db:5432/polaris_development
       - REDIS_URL=redis://redis:6379
+      # Tell Node where to look inside the container
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
     labels:
       - "dev.orbstack.domains=api.polaris.orb.local"
 
