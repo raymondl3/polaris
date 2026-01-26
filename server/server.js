@@ -1,25 +1,25 @@
 // server.js
+require('dotenv').config(); // Load env vars first
 const express = require('express');
 const cors = require('cors');
 const vision = require('@google-cloud/vision');
-
-// FIX #3: Import the whole object so we can use 'ingredients.parseOCRText' or similar
-const ingredients = require('./ingredients'); 
+const ingredients = require('./ingredients'); // Import our logic
 
 const app = express();
 
-// FIX #1: Must match the internal Docker port (3000)
-// Your Docker command maps 8000->3000. So we must listen on 3000 inside.
-const port = process.env.PORT || 3000; 
+// Docker maps 8000->8000, so we default to 8000
+const port = process.env.PORT || 8000;
 
+// Google Vision Client 
+// (It automatically finds credentials via GOOGLE_APPLICATION_CREDENTIALS env var)
 const client = new vision.ImageAnnotatorClient();
 
-// MIDDLEWARE
+// Middleware
 app.use(cors());
-// This looks correct (Limit is BEFORE routes) ✅
-app.use(express.json({ limit: '10mb' })); 
+app.use(express.json({ limit: '10mb' })); // Allow large image payloads
 
-// THE ROUTE
+// --- ROUTES ---
+
 app.post('/api/scan-image', async (req, res) => {
   console.log("📍 Checkpoint 1: Request received!");
   
@@ -30,37 +30,34 @@ app.post('/api/scan-image', async (req, res) => {
       console.log("❌ Error: No image provided");
       return res.status(400).json({ error: 'No image provided' });
     }
-    console.log(`📍 Checkpoint 2: Image received (Length: ${image.length})`);
-
+    
+    // Clean base64 string
     const base64Clean = image.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Clean, 'base64');
 
-    console.log("📍 Checkpoint 3: Calling Google Vision...");
+    console.log(`📍 Checkpoint 2: Calling Google Vision...`);
 
-    // FIX #2: Wrap the buffer in an object to prevent ENAMETOOLONG crash
+    // Call Google Vision API
     const [result] = await client.documentTextDetection({
-      image: {
-        content: buffer
-      }
+      image: { content: buffer }
     });
     
-    console.log("📍 Checkpoint 4: Google Vision responded!");
+    console.log("📍 Checkpoint 3: Google Vision responded!");
 
     if (!result.fullTextAnnotation) {
       return res.json({
-        safe: true,
-        matches: [],
-        debug_text: "No text detected.",
-        warning: "Image might be too blurry."
+        rawText: "",
+        parsedIngredients: [],
+        results: [],
+        warning: "No text detected in image."
       });
     }
 
-    // FIX #3 usage: Ensure this function name matches what is in ingredients.js
-    // I am assuming your function is named 'parseOCRText' based on your imports
-    // If your ingredients.js exports 'analyzeImageText', use that instead.
-    const analysis = ingredients.parseOCRText(result);
+    // --- THE CRITICAL FIX ---
+    // We call the 'analyze' function which coordinates everything
+    const analysis = ingredients.analyze(result);
 
-    console.log("📍 Checkpoint 5: Analysis complete. Sending response.");
+    console.log("📍 Checkpoint 4: Analysis complete. Sending response.");
     res.json(analysis);
 
   } catch (error) {
@@ -69,7 +66,7 @@ app.post('/api/scan-image', async (req, res) => {
   }
 });
 
-// START SERVER
+// --- START SERVER ---
 app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Polaris Backend running on http://0.0.0.0:${port}`);
 });
