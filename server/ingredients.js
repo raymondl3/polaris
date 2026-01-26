@@ -42,22 +42,42 @@ const textFromBlock = (block) => {
 };
 
 // Smart Extraction: Looks for "Ingredients" blocks specifically
+// UPDATED: Smart Extraction that looks at neighbors
 const extractIngredientsByBlock = (visionResult) => {
   const fullAnnotation = visionResult.fullTextAnnotation;
   if (!fullAnnotation || !fullAnnotation.pages) return "";
 
   const blocks = fullAnnotation.pages[0].blocks;
-  
-  // Filter for blocks containing "ingredients" or "contains"
-  const ingredientBlocks = blocks.filter(block => {
-    const text = textFromBlock(block).toLowerCase();
-    return text.includes('ingredients') || text.includes('contains:');
-  });
+  const validTextChunks = [];
 
-  // If found specific blocks, use them. Otherwise, use full text.
-  if (ingredientBlocks.length > 0) {
-    return ingredientBlocks.map(b => textFromBlock(b)).join('\n');
+  // Iterate through blocks to find "anchors"
+  for (let i = 0; i < blocks.length; i++) {
+    const text = textFromBlock(blocks[i]).toLowerCase();
+    
+    // Is this block a start of the ingredients list?
+    if (text.includes('ingredients') || text.includes('contains:') || text.includes('ingrédients')) {
+      
+      // 1. Add THIS block (It might contain "Ingredients: Milk, Salt")
+      validTextChunks.push(textFromBlock(blocks[i]));
+
+      // 2. THE FIX: Look ahead! 
+      // If the ingredients list continues to the next block, grab it too.
+      // We assume the next block is relevant if it's close by.
+      if (i + 1 < blocks.length) {
+        validTextChunks.push(textFromBlock(blocks[i + 1]));
+      }
+    }
   }
+
+  // If we found good chunks, join them
+  if (validTextChunks.length > 0) {
+    // Join with newlines to keep separation clear
+    return validTextChunks.join('\n');
+  }
+
+  // Fallback: If logic failed, return EVERYTHING. 
+  // It's better to be noisy than empty.
+  console.log("⚠️ Block logic failed. Falling back to full text.");
   return fullAnnotation.text;
 };
 

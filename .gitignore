@@ -152,4 +152,5 @@ Dockerfile.frontend
 google-key.json
 server/google-key.json
 tests/cropped_label.jpg
+tests/fixed_label.jpg
 tests/label.PNG

@@ -4,7 +4,8 @@ const path = require('path');
 
 // ⚠️ CHANGE THIS to your actual image filename
 // const imagePath = path.join(__dirname, 'cropped_label.jpg'); 
-const imagePath = path.join(__dirname, 'label.png'); 
+const imagePath = path.join(__dirname, 'fixed_label.jpg'); 
+// const imagePath = path.join(__dirname, 'label.png'); 
 
 const testServer = async () => {
   try {
