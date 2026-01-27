@@ -1,12 +1,18 @@
 // ingredients.js
 const rawData = require('./blocklist.json');
 
-// --- 1. SETUP PHASE (Runs once on startup) ---
+// --- 1. SETUP PHASE ---
 const blocklistMap = new Map();
 const exceptionsList = [];
 
+// Common French words to filter out just in case
+const FRENCH_STOPWORDS = new Set([
+  'eau', 'sel', 'sucre', 'huile', 'lait', 'farine', 'amidon', 
+  'vinaigre', 'arôme', 'colorant', 'épices', 'levure', 'blé', 
+  'soja', 'maïs', 'moutarde'
+]);
+
 rawData.forEach((group) => {
-  // Populate Blocklist Map
   group.keywords.forEach((keyword) => {
     blocklistMap.set(keyword.toLowerCase(), {
       id: group.id,
@@ -16,22 +22,15 @@ rawData.forEach((group) => {
       desc: group.description
     });
   });
-
-  // Populate Exceptions List
   if (group.exceptions) {
-    group.exceptions.forEach((exc) => {
-      exceptionsList.push(exc.toLowerCase());
-    });
+    group.exceptions.forEach((exc) => exceptionsList.push(exc.toLowerCase()));
   }
 });
-
-// Sort exceptions by length (Longest First) to prevent partial matching bugs
 exceptionsList.sort((a, b) => b.length - a.length);
 
 
 // --- 2. HELPER FUNCTIONS ---
 
-// Extract text from Google's complex "Block" structure
 const textFromBlock = (block) => {
   if (!block.paragraphs) return "";
   return block.paragraphs.map(p => 
@@ -41,8 +40,7 @@ const textFromBlock = (block) => {
   ).join('\n');
 };
 
-// Smart Extraction: Looks for "Ingredients" blocks specifically
-// UPDATED: Smart Extraction that looks at neighbors
+// Standard Extraction Logic (The Reverted Version)
 const extractIngredientsByBlock = (visionResult) => {
   const fullAnnotation = visionResult.fullTextAnnotation;
   if (!fullAnnotation || !fullAnnotation.pages) return "";
@@ -50,56 +48,71 @@ const extractIngredientsByBlock = (visionResult) => {
   const blocks = fullAnnotation.pages[0].blocks;
   const validTextChunks = [];
 
-  // Iterate through blocks to find "anchors"
   for (let i = 0; i < blocks.length; i++) {
     const text = textFromBlock(blocks[i]).toLowerCase();
     
-    // Is this block a start of the ingredients list?
+    // Check keywords (We permit 'ingrédients' here just to catch the block)
     if (text.includes('ingredients') || text.includes('contains:') || text.includes('ingrédients')) {
-      
-      // 1. Add THIS block (It might contain "Ingredients: Milk, Salt")
       validTextChunks.push(textFromBlock(blocks[i]));
 
-      // 2. THE FIX: Look ahead! 
-      // If the ingredients list continues to the next block, grab it too.
-      // We assume the next block is relevant if it's close by.
       if (i + 1 < blocks.length) {
         validTextChunks.push(textFromBlock(blocks[i + 1]));
       }
     }
   }
 
-  // If we found good chunks, join them
   if (validTextChunks.length > 0) {
-    // Join with newlines to keep separation clear
     return validTextChunks.join('\n');
   }
 
-  // Fallback: If logic failed, return EVERYTHING. 
-  // It's better to be noisy than empty.
   console.log("⚠️ Block logic failed. Falling back to full text.");
   return fullAnnotation.text;
 };
 
-// Clean and split the text into a list
+
+// --- 3. CLEANING LOGIC (The Guillotine Fix) ---
+
 const parseStringIntoList = (fullText) => {
   if (!fullText) return [];
   
-  // Remove "Ingredients:" prefix (case insensitive)
-  let cleanText = fullText.replace(/^(ingredients|ingrédients)[:\s]*/i, '');
-  // Remove newlines
-  cleanText = cleanText.replace(/\n/g, ' ');
+  let cleanText = fullText;
+
+  // 1. THE GUILLOTINE: Cut off French text
+  // The moment we see "Ingrédients:" (French spelling) or "Contient:" (French Contains),
+  // we split the string and only keep the FIRST part (Index 0).
   
-  // Split by commas or periods
-  return cleanText.split(/[,.]/).map(i => i.trim()).filter(i => i.length > 0);
+  // Cut at "Ingrédients"
+  cleanText = cleanText.split(/ingrédients[:\s]/i)[0];
+  
+  // Cut at "Contient" (Case insensitive)
+  cleanText = cleanText.split(/contient[:\s]/i)[0];
+
+  // 2. Remove Parentheses (e.g. "Water (Eau)")
+  cleanText = cleanText.replace(/\s*\([^)]*\)/g, '');
+
+  // 3. Remove Slashes (e.g. "Water/Eau")
+  cleanText = cleanText.replace(/\s*\/.*?(?=[,.]|$)/g, '');
+
+  // 4. Remove English Header Prefix
+  cleanText = cleanText.replace(/^(ingredients)[:\s]*/i, '');
+  
+  // 5. Flatten newlines
+  cleanText = cleanText.replace(/\n/g, ' ');
+
+  // 6. Split and Filter
+  const rawList = cleanText.split(/[,.]/).map(i => i.trim()).filter(i => i.length > 0);
+
+  // 7. Stopword Filter (Safety net)
+  return rawList.filter(item => !FRENCH_STOPWORDS.has(item.toLowerCase()));
 };
 
-// The Safety Check Logic (Per Ingredient)
+
+// --- 4. CHECK LOGIC ---
+
 const checkSingleIngredient = (ingredientText) => {
   let cleanText = ingredientText.toLowerCase();
   let foundException = null;
 
-  // A. Check Exceptions (Allowlist)
   for (const exception of exceptionsList) {
     if (cleanText.includes(exception)) {
       foundException = exception;
@@ -107,26 +120,22 @@ const checkSingleIngredient = (ingredientText) => {
     }
   }
 
-  // B. Check Blocklist (The "Bad" Words)
-  const tokens = cleanText.split(/[\s,().]+/); // Split remaining text into words
-
+  const tokens = cleanText.split(/[\s,().]+/);
   for (const token of tokens) {
     if (!token) continue;
-    
     const match = blocklistMap.get(token);
     if (match) {
       return {
         originalText: ingredientText,
         matchType: 'BLOCK',
         matchedWord: token,
-        status: match.status,      // RED
+        status: match.status,
         category: match.category,
         desc: match.desc
       };
     }
   }
 
-  // C. Return Result
   if (foundException) {
     return {
       originalText: ingredientText,
@@ -137,34 +146,14 @@ const checkSingleIngredient = (ingredientText) => {
     };
   }
 
-  return { 
-    originalText: ingredientText, 
-    status: 'GREEN', 
-    category: 'Safe',
-    desc: 'No animal ingredients detected.'
-  };
+  return { originalText: ingredientText, status: 'GREEN', category: 'Safe', desc: 'No animal ingredients detected.' };
 };
 
-
-// --- 3. MAIN EXPORT ---
-
-// The "Manager" function that Server.js calls
 const analyze = (visionResult) => {
-  // 1. Get raw text (smart extraction)
   const rawText = extractIngredientsByBlock(visionResult);
-  
-  // 2. Parse into list
   const ingredientList = parseStringIntoList(rawText);
-  
-  // 3. Check each item against database
   const results = ingredientList.map(item => checkSingleIngredient(item));
-
-  // 4. Return the RICH OBJECT
-  return {
-    rawText: rawText,
-    parsedIngredients: ingredientList,
-    results: results
-  };
+  return { rawText, parsedIngredients: ingredientList, results };
 };
 
 module.exports = { analyze };
